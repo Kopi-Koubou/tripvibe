@@ -1208,12 +1208,24 @@ def scrape_flights(origin, destination, date_str, return_date_str=None):
 
     html = response.html_content
 
-    # Extract prices - adjust range based on trip type
-    prices = re.findall(r'\$\s*([\d,]+)', html)
+    # Extract prices more carefully
+    # Remove script and style tags first to avoid picking up non-price numbers
+    clean_html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
+    clean_html = re.sub(r'<style[^>]*>.*?</style>', '', clean_html, flags=re.DOTALL)
+
+    # Extract text content
+    text_content = re.sub(r'<[^>]+>', ' ', clean_html)
+
+    # Find prices in clean text
+    prices = re.findall(r'\$\s*([\d,]+)', text_content)
     flight_prices = []
-    # Return flights are typically 1.5-2x one-way price
-    min_price = 600 if return_date_str else 300
-    max_price = 20000 if return_date_str else 10000
+
+    # Return flights: typically S$1200-5000 for long-haul
+    # One-way flights: typically S$400-3000 for long-haul
+    if return_date_str:
+        min_price, max_price = 1000, 8000
+    else:
+        min_price, max_price = 400, 5000
 
     for p in prices:
         try:
@@ -1222,6 +1234,9 @@ def scrape_flights(origin, destination, date_str, return_date_str=None):
                 flight_prices.append(val)
         except:
             pass
+
+    # Remove duplicates and sort
+    flight_prices = sorted(set(flight_prices))
 
     # Airlines
     airline_names = list(AIRLINE_EMOJIS.keys())
