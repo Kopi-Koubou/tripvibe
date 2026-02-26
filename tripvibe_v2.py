@@ -167,6 +167,52 @@ HTML_TEMPLATE = """
         .search-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(102,126,234,0.4); }
         .search-btn:disabled { opacity: 0.5; }
 
+        /* Trip Type Toggle */
+        .trip-type-toggle {
+            display: flex;
+            gap: 0;
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 4px;
+            width: fit-content;
+        }
+        .trip-type-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .trip-type-btn.active {
+            background: var(--accent);
+            color: white;
+        }
+        .trip-type-btn:hover:not(.active) {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Trip Badge */
+        .trip-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        .trip-badge.return {
+            background: rgba(67, 233, 123, 0.2);
+            color: #43e97b;
+        }
+        .trip-badge.oneway {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+        }
+
         /* Meal Deal Banner */
         .meal-deal-banner {
             background: var(--gradient-gold);
@@ -507,7 +553,17 @@ HTML_TEMPLATE = """
         </section>
 
         <section class="search-section">
+            <!-- Trip Type Toggle -->
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 0.8em; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Trip Type</label>
+                <div class="trip-type-toggle">
+                    <button type="button" class="trip-type-btn" data-type="oneway" id="onewayBtn">One-way ✈️</button>
+                    <button type="button" class="trip-type-btn active" data-type="return" id="returnBtn">Return ↩️</button>
+                </div>
+            </div>
+
             <form id="searchForm" class="search-grid">
+                <input type="hidden" name="tripType" id="tripType" value="return">
                 <div class="input-group">
                     <label>From</label>
                     <select name="origin" id="origin">
@@ -525,11 +581,11 @@ HTML_TEMPLATE = """
                     </select>
                 </div>
                 <div class="input-group">
-                    <label>Check-in</label>
+                    <label>Depart</label>
                     <input type="date" name="checkin" id="checkin" value="{{ default_checkin }}">
                 </div>
-                <div class="input-group">
-                    <label>Check-out</label>
+                <div class="input-group" id="returnDateGroup">
+                    <label>Return</label>
                     <input type="date" name="checkout" id="checkout" value="{{ default_checkout }}">
                 </div>
                 <div class="input-group">
@@ -556,7 +612,15 @@ HTML_TEMPLATE = """
         <section class="bundles-section" id="bundlesSection">
             {% if bundles %}
             <div class="section-header">
-                <h2 class="section-title">🎯 {{ bundles|length }} bundles for your trip</h2>
+                <div>
+                    <h2 class="section-title">🎯 {{ bundles|length }} bundles for your trip</h2>
+                    <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px;">
+                        <span class="trip-badge {{ 'return' if trip_type == 'return' else 'oneway' }}">
+                            {{ '↩️ Return Flight' if trip_type == 'return' else '✈️ One-way Flight' }}
+                        </span>
+                        <span style="color: var(--text-secondary); font-size: 0.9em;">{{ route_display }}</span>
+                    </div>
+                </div>
                 <div class="view-toggle">
                     <button class="toggle-btn active">Best Value</button>
                     <button class="toggle-btn">Cheapest</button>
@@ -1001,6 +1065,25 @@ HTML_TEMPLATE = """
             showToast(`Sorted by ${sortType}`);
         }
 
+        // ========== TRIP TYPE TOGGLE ==========
+        let currentTripType = 'return';
+
+        document.getElementById('onewayBtn').addEventListener('click', () => {
+            currentTripType = 'oneway';
+            document.getElementById('tripType').value = 'oneway';
+            document.getElementById('onewayBtn').classList.add('active');
+            document.getElementById('returnBtn').classList.remove('active');
+            document.getElementById('returnDateGroup').style.display = 'none';
+        });
+
+        document.getElementById('returnBtn').addEventListener('click', () => {
+            currentTripType = 'return';
+            document.getElementById('tripType').value = 'return';
+            document.getElementById('returnBtn').classList.add('active');
+            document.getElementById('onewayBtn').classList.remove('active');
+            document.getElementById('returnDateGroup').style.display = 'flex';
+        });
+
         // ========== SEARCH FORM ==========
         document.getElementById('searchForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1011,12 +1094,10 @@ HTML_TEMPLATE = """
             btn.disabled = true;
             btn.textContent = 'Building...';
 
-            const messages = [
-                "Finding flights... ✈️",
-                "Scanning hotels... 🏨",
-                "Matching best combos... 🎯",
-                "Calculating savings... 💰"
-            ];
+            const tripType = document.getElementById('tripType').value;
+            const messages = tripType === 'return'
+                ? ["Finding return flights... ↩️", "Scanning hotels... 🏨", "Matching best combos... 🎯", "Calculating savings... 💰"]
+                : ["Finding one-way flights... ✈️", "Scanning hotels... 🏨", "Matching best combos... 🎯", "Calculating savings... 💰"];
 
             section.innerHTML = `
                 <div class="loading">
@@ -1038,7 +1119,8 @@ HTML_TEMPLATE = """
                 destination: document.getElementById('destination').value,
                 checkin: document.getElementById('checkin').value,
                 checkout: document.getElementById('checkout').value,
-                travelers: document.getElementById('travelers').value
+                travelers: document.getElementById('travelers').value,
+                tripType: tripType
             });
 
             try {
@@ -1098,12 +1180,25 @@ VIBE_TEXTS = [
 ]
 
 
-def scrape_flights(origin, destination, date_str):
-    """Scrape flights from Skyscanner."""
+def scrape_flights(origin, destination, date_str, return_date_str=None):
+    """Scrape flights from Skyscanner.
+
+    Args:
+        origin: Origin airport code
+        destination: Destination airport code
+        date_str: Departure date (YYYY-MM-DD)
+        return_date_str: Return date for round-trip (YYYY-MM-DD), or None for one-way
+    """
     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     sky_date = date_obj.strftime("%y%m%d")
 
-    url = f"https://www.skyscanner.com.sg/transport/flights/{origin.lower()}/{destination.lower()}/{sky_date}/?currency=SGD"
+    # Build URL - add return date for round-trip
+    if return_date_str:
+        return_obj = datetime.strptime(return_date_str, "%Y-%m-%d")
+        sky_return = return_obj.strftime("%y%m%d")
+        url = f"https://www.skyscanner.com.sg/transport/flights/{origin.lower()}/{destination.lower()}/{sky_date}/{sky_return}/?currency=SGD"
+    else:
+        url = f"https://www.skyscanner.com.sg/transport/flights/{origin.lower()}/{destination.lower()}/{sky_date}/?currency=SGD"
 
     fetcher = StealthyFetcher(headless=True)
     response = fetcher.fetch(url, solve_cloudflare=True)
@@ -1113,13 +1208,17 @@ def scrape_flights(origin, destination, date_str):
 
     html = response.html_content
 
-    # Extract prices
+    # Extract prices - adjust range based on trip type
     prices = re.findall(r'\$\s*([\d,]+)', html)
     flight_prices = []
+    # Return flights are typically 1.5-2x one-way price
+    min_price = 600 if return_date_str else 300
+    max_price = 20000 if return_date_str else 10000
+
     for p in prices:
         try:
             val = int(p.replace(',', ''))
-            if 400 <= val <= 15000:
+            if min_price <= val <= max_price:
                 flight_prices.append(val)
         except:
             pass
@@ -1268,11 +1367,13 @@ def load_bundles():
 def index():
     bundles_data = load_bundles()
     default_checkin = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
-    default_checkout = (datetime.now() + timedelta(days=93)).strftime("%Y-%m-%d")
+    default_checkout = (datetime.now() + timedelta(days=97)).strftime("%Y-%m-%d")  # 7 days default
 
     return render_template_string(
         HTML_TEMPLATE,
         bundles=bundles_data.get("bundles") if bundles_data else None,
+        trip_type=bundles_data.get("trip_type", "return") if bundles_data else "return",
+        route_display=bundles_data.get("route_display", "") if bundles_data else "",
         cities=CITIES,
         default_checkin=default_checkin,
         default_checkout=default_checkout,
@@ -1285,17 +1386,29 @@ def api_bundle():
     destination = request.args.get("destination", "NYCA")
     checkin = request.args.get("checkin")
     checkout = request.args.get("checkout")
+    trip_type = request.args.get("tripType", "return")  # Default to return
 
-    if not checkin or not checkout:
-        return jsonify({"success": False, "error": "Dates required"})
+    if not checkin:
+        return jsonify({"success": False, "error": "Departure date required"})
+
+    # For one-way, checkout is optional (but needed for hotel)
+    if trip_type == "return" and not checkout:
+        return jsonify({"success": False, "error": "Return date required"})
 
     try:
-        nights = (datetime.strptime(checkout, "%Y-%m-%d") - datetime.strptime(checkin, "%Y-%m-%d")).days
-        if nights <= 0:
-            return jsonify({"success": False, "error": "Invalid dates"})
+        # Calculate nights for hotel
+        if checkout:
+            nights = (datetime.strptime(checkout, "%Y-%m-%d") - datetime.strptime(checkin, "%Y-%m-%d")).days
+            if nights <= 0:
+                return jsonify({"success": False, "error": "Invalid dates"})
+        else:
+            # One-way with no return date - default to 3 nights
+            nights = 3
+            checkout = (datetime.strptime(checkin, "%Y-%m-%d") + timedelta(days=3)).strftime("%Y-%m-%d")
 
-        # Scrape flights
-        flights = scrape_flights(origin, destination, checkin)
+        # Scrape flights - pass return date only for return trips
+        return_date = checkout if trip_type == "return" else None
+        flights = scrape_flights(origin, destination, checkin, return_date)
         if not flights:
             return jsonify({"success": False, "error": "No flights found"})
 
@@ -1306,6 +1419,14 @@ def api_bundle():
         # Create bundles
         bundles = create_bundles(flights, hotels, origin, destination, nights)
 
+        # Build route display
+        origin_city = CITIES.get(origin, {}).get("name", origin)
+        dest_city = CITIES.get(destination, {}).get("name", destination)
+        if trip_type == "return":
+            route_display = f"{origin_city} ↔ {dest_city} · {checkin} to {checkout}"
+        else:
+            route_display = f"{origin_city} → {dest_city} · {checkin}"
+
         # Save
         data = {
             "bundles": bundles,
@@ -1313,6 +1434,8 @@ def api_bundle():
             "destination": destination,
             "checkin": checkin,
             "checkout": checkout,
+            "trip_type": trip_type,
+            "route_display": route_display,
             "scraped_at": datetime.now().isoformat()
         }
 
