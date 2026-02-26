@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Data files (generated)
+tripvibe_data/
+data/
+*.json
+!package.json
+
+# HTML responses (debug)
+*.html
+!templates/*.html
+
+# Logs
+*.log
+
+# Keys and secrets
+*.p8
+*.pem
+*.key
