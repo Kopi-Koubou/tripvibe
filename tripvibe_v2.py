@@ -1052,14 +1052,16 @@ HTML_TEMPLATE = """
         function bookBundle(bundleIndex) {
             const bundle = allBundles[bundleIndex];
             const addons = Array.from(bundleAddons[bundleIndex]);
-            const skyscannerUrl = getSkyscannerUrl();
-            const bookingUrl = getBookingUrl();
+
+            // Use the specific booking URLs from scraped data, fallback to search URLs
+            const flightUrl = bundle.flight.booking_url || getSkyscannerUrl();
+            const hotelUrl = bundle.hotel.booking_url || getBookingUrl();
 
             let html = `
                 <div style="text-align: center; padding: 20px 0;">
                     <div style="font-size: 3em; margin-bottom: 16px;">🎫</div>
                     <h3 style="margin-bottom: 8px;">Complete Your Booking</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 24px;">We'll open both sites so you can book your trip!</p>
+                    <p style="color: var(--text-secondary); margin-bottom: 24px;">Direct links to your selected flight & hotel!</p>
 
                     <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; text-align: left; margin-bottom: 20px;">
                         <p style="margin-bottom: 12px;"><strong>✈️ Flight:</strong> ${bundle.flight.airline} - S$${bundle.flight.price.toLocaleString()}</p>
@@ -1070,24 +1072,22 @@ HTML_TEMPLATE = """
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 12px;">
-                        <a href="${skyscannerUrl}" target="_blank" rel="noopener"
+                        <a href="${flightUrl}" target="_blank" rel="noopener"
                            style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px 24px; background: linear-gradient(135deg, #00a4e4 0%, #0070c9 100%); color: white; text-decoration: none; border-radius: 12px; font-weight: 600; transition: transform 0.2s;"
                            onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
                             <span style="font-size: 1.5em;">✈️</span>
-                            <span>Book Flight on Skyscanner</span>
-                            <span style="opacity: 0.7;">→</span>
+                            <span>Book ${bundle.flight.airline} Flight →</span>
                         </a>
-                        <a href="${bookingUrl}" target="_blank" rel="noopener"
+                        <a href="${hotelUrl}" target="_blank" rel="noopener"
                            style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px 24px; background: linear-gradient(135deg, #003580 0%, #00224f 100%); color: white; text-decoration: none; border-radius: 12px; font-weight: 600; transition: transform 0.2s;"
                            onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
                             <span style="font-size: 1.5em;">🏨</span>
-                            <span>Book Hotel on Booking.com</span>
-                            <span style="opacity: 0.7;">→</span>
+                            <span>Book ${bundle.hotel.name.substring(0, 25)}${bundle.hotel.name.length > 25 ? '...' : ''} →</span>
                         </a>
                     </div>
 
                     <p style="color: var(--text-secondary); margin-top: 20px; font-size: 0.85em;">
-                        💡 Tip: Open both tabs and complete your bookings for the bundle experience!
+                        💡 Click each button to book directly on the provider's site
                     </p>
                 </div>
             `;
@@ -1095,8 +1095,8 @@ HTML_TEMPLATE = """
             openModal('🎫 Book Your Trip', html);
             document.getElementById('modalConfirm').textContent = 'Open Both →';
             document.getElementById('modalConfirm').onclick = () => {
-                window.open(skyscannerUrl, '_blank');
-                setTimeout(() => window.open(bookingUrl, '_blank'), 500);
+                window.open(flightUrl, '_blank');
+                setTimeout(() => window.open(hotelUrl, '_blank'), 500);
                 closeModal();
                 showToast('✈️🏨 Opening booking pages...');
             };
@@ -1254,17 +1254,22 @@ def scrape_flights(origin, destination, date_str, return_date_str=None):
     if return_date_str:
         return_obj = datetime.strptime(return_date_str, "%Y-%m-%d")
         sky_return = return_obj.strftime("%y%m%d")
-        url = f"https://www.skyscanner.com.sg/transport/flights/{origin.lower()}/{destination.lower()}/{sky_date}/{sky_return}/?currency=SGD"
+        base_url = f"https://www.skyscanner.com.sg/transport/flights/{origin.lower()}/{destination.lower()}/{sky_date}/{sky_return}/?currency=SGD"
     else:
-        url = f"https://www.skyscanner.com.sg/transport/flights/{origin.lower()}/{destination.lower()}/{sky_date}/?currency=SGD"
+        base_url = f"https://www.skyscanner.com.sg/transport/flights/{origin.lower()}/{destination.lower()}/{sky_date}/?currency=SGD"
 
     fetcher = StealthyFetcher(headless=True)
-    response = fetcher.fetch(url, solve_cloudflare=True)
+    response = fetcher.fetch(base_url, solve_cloudflare=True)
 
     if response.status != 200:
         return []
 
     html = response.html_content
+
+    # Extract flight detail URLs (Skyscanner uses these for specific flight results)
+    # Pattern: /transport/flights/sin/nyca/260612/260619/config/... or similar deep links
+    flight_urls = re.findall(r'href="(/transport/flights/[^"]+)"', html)
+    flight_urls = list(dict.fromkeys(flight_urls))  # Remove duplicates, preserve order
 
     # Extract prices more carefully
     # Remove script and style tags first to avoid picking up non-price numbers
@@ -1316,6 +1321,12 @@ def scrape_flights(origin, destination, date_str, return_date_str=None):
         dur_match = re.match(r'(\d+)h', duration)
         dur_hours = int(dur_match.group(1)) if dur_match else 20
 
+        # Get flight-specific URL if available, otherwise use base search URL
+        if i < len(flight_urls):
+            flight_url = f"https://www.skyscanner.com.sg{flight_urls[i]}"
+        else:
+            flight_url = base_url
+
         flights.append({
             "airline": airline,
             "emoji": AIRLINE_EMOJIS.get(airline, "✈️"),
@@ -1326,6 +1337,7 @@ def scrape_flights(origin, destination, date_str, return_date_str=None):
             "arrive": times[(i + 3) % len(times)] if times else "18:00",
             "stops": 1 if dur_hours < 22 else 2,
             "carbon": int(dur_hours * 45),
+            "booking_url": flight_url,
         })
 
     return flights
@@ -1336,15 +1348,25 @@ def scrape_hotels(city, checkin, checkout):
     city_info = CITIES.get(city, {"booking": city})
     booking_city = city_info.get("booking", city)
 
-    url = f"https://www.booking.com/searchresults.html?ss={booking_city}&checkin={checkin}&checkout={checkout}&group_adults=2&no_rooms=1&selected_currency=SGD"
+    base_url = f"https://www.booking.com/searchresults.html?ss={booking_city}&checkin={checkin}&checkout={checkout}&group_adults=2&no_rooms=1&selected_currency=SGD"
 
     fetcher = StealthyFetcher(headless=True)
-    response = fetcher.fetch(url, solve_cloudflare=True)
+    response = fetcher.fetch(base_url, solve_cloudflare=True)
 
     if response.status != 200:
         return []
 
     html = response.html_content
+
+    # Extract hotel URLs - Booking.com uses /hotel/{country}/{hotel-slug}.html format
+    # Look for links with hotel paths
+    hotel_url_pattern = r'href="(https://www\.booking\.com/hotel/[^"]+)"'
+    hotel_urls = re.findall(hotel_url_pattern, html)
+    # Also try relative URLs
+    hotel_url_relative = re.findall(r'href="(/hotel/[^"]+\.html[^"]*)"', html)
+    hotel_urls.extend([f"https://www.booking.com{u}" for u in hotel_url_relative])
+    # Remove duplicates, preserve order
+    hotel_urls = list(dict.fromkeys(hotel_urls))
 
     # Clean HTML - remove scripts and styles to avoid picking up wrong prices
     clean_html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
@@ -1395,6 +1417,17 @@ def scrape_hotels(city, checkin, checkout):
             # Estimate price based on typical hotel pricing
             total_price = (200 + i * 50) * nights
 
+        # Get hotel-specific URL if available
+        if i < len(hotel_urls):
+            # Add checkin/checkout to the hotel URL
+            hotel_url = hotel_urls[i]
+            if '?' in hotel_url:
+                hotel_url += f"&checkin={checkin}&checkout={checkout}&selected_currency=SGD"
+            else:
+                hotel_url += f"?checkin={checkin}&checkout={checkout}&selected_currency=SGD"
+        else:
+            hotel_url = base_url
+
         hotels.append({
             "name": names[i][:35] + "..." if len(names[i]) > 35 else names[i],
             "price_total": total_price,
@@ -1403,6 +1436,7 @@ def scrape_hotels(city, checkin, checkout):
             "score": scores[i] if i < len(scores) else f"{8.0 + (i % 15) / 10:.1f}",
             "reviews": 500 + (i * 234) % 2000,
             "location": locations[i % len(locations)],
+            "booking_url": hotel_url,
         })
 
     return hotels
