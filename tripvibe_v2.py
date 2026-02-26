@@ -869,8 +869,42 @@ HTML_TEMPLATE = """
         const routeInfo = {
             origin: '{{ bundles[0].origin if bundles else "SIN" }}',
             destination: '{{ bundles[0].destination if bundles else "NYCA" }}',
-            nights: {{ bundles[0].nights if bundles else 3 }}
+            nights: {{ bundles[0].nights if bundles else 3 }},
+            checkin: '{{ bundles_data.checkin if bundles_data else "" }}',
+            checkout: '{{ bundles_data.checkout if bundles_data else "" }}',
+            tripType: '{{ bundles_data.trip_type if bundles_data else "return" }}'
         };
+
+        // City mappings for booking URLs
+        const cityMappings = {
+            'SIN': { name: 'Singapore', bookingCity: 'Singapore' },
+            'NYCA': { name: 'New York', bookingCity: 'New+York' },
+            'LHR': { name: 'London', bookingCity: 'London' },
+            'NRT': { name: 'Tokyo', bookingCity: 'Tokyo' },
+            'CDG': { name: 'Paris', bookingCity: 'Paris' },
+            'BKK': { name: 'Bangkok', bookingCity: 'Bangkok' },
+            'DXB': { name: 'Dubai', bookingCity: 'Dubai' },
+            'LAX': { name: 'Los Angeles', bookingCity: 'Los+Angeles' }
+        };
+
+        // Generate Skyscanner flight URL
+        function getSkyscannerUrl() {
+            const origin = routeInfo.origin.toLowerCase();
+            const dest = routeInfo.destination.toLowerCase();
+            const checkin = routeInfo.checkin.replace(/-/g, '').slice(2); // YYMMDD
+
+            if (routeInfo.tripType === 'return' && routeInfo.checkout) {
+                const checkout = routeInfo.checkout.replace(/-/g, '').slice(2);
+                return `https://www.skyscanner.com.sg/transport/flights/${origin}/${dest}/${checkin}/${checkout}/?currency=SGD`;
+            }
+            return `https://www.skyscanner.com.sg/transport/flights/${origin}/${dest}/${checkin}/?currency=SGD`;
+        }
+
+        // Generate Booking.com hotel URL
+        function getBookingUrl() {
+            const destCity = cityMappings[routeInfo.destination]?.bookingCity || routeInfo.destination;
+            return `https://www.booking.com/searchresults.html?ss=${destCity}&checkin=${routeInfo.checkin}&checkout=${routeInfo.checkout}&group_adults=2&no_rooms=1&selected_currency=SGD`;
+        }
 
         // Alternative options (simulated from same scrape)
         const altFlights = allBundles.map(b => b.flight);
@@ -1018,30 +1052,54 @@ HTML_TEMPLATE = """
         function bookBundle(bundleIndex) {
             const bundle = allBundles[bundleIndex];
             const addons = Array.from(bundleAddons[bundleIndex]);
+            const skyscannerUrl = getSkyscannerUrl();
+            const bookingUrl = getBookingUrl();
 
             let html = `
                 <div style="text-align: center; padding: 20px 0;">
-                    <div style="font-size: 3em; margin-bottom: 16px;">🎉</div>
-                    <h3 style="margin-bottom: 8px;">Booking Confirmed!</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 24px;">Well, not really—this is a demo 😅</p>
+                    <div style="font-size: 3em; margin-bottom: 16px;">🎫</div>
+                    <h3 style="margin-bottom: 8px;">Complete Your Booking</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 24px;">We'll open both sites so you can book your trip!</p>
 
-                    <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; text-align: left;">
-                        <p style="margin-bottom: 12px;"><strong>✈️ Flight:</strong> ${bundle.flight.airline}</p>
-                        <p style="margin-bottom: 12px;"><strong>🏨 Hotel:</strong> ${bundle.hotel.name}</p>
-                        <p style="margin-bottom: 12px;"><strong>📅 Dates:</strong> ${routeInfo.nights} nights</p>
+                    <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; text-align: left; margin-bottom: 20px;">
+                        <p style="margin-bottom: 12px;"><strong>✈️ Flight:</strong> ${bundle.flight.airline} - S$${bundle.flight.price.toLocaleString()}</p>
+                        <p style="margin-bottom: 12px;"><strong>🏨 Hotel:</strong> ${bundle.hotel.name} - S$${bundle.hotel.price_total.toLocaleString()}</p>
+                        <p style="margin-bottom: 12px;"><strong>📅 Dates:</strong> ${routeInfo.checkin} to ${routeInfo.checkout} (${routeInfo.nights} nights)</p>
                         ${addons.length ? `<p style="margin-bottom: 12px;"><strong>➕ Add-ons:</strong> ${addons.join(', ')}</p>` : ''}
-                        <p style="font-size: 1.3em; margin-top: 16px;"><strong>💰 Total: S$${bundle.total_price.toLocaleString()}</strong></p>
+                        <p style="font-size: 1.3em; margin-top: 16px;"><strong>💰 Bundle Total: S$${bundle.total_price.toLocaleString()}</strong></p>
                     </div>
 
-                    <p style="color: var(--text-secondary); margin-top: 20px; font-size: 0.9em;">
-                        In a real app, this would redirect to Skyscanner + Booking.com
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <a href="${skyscannerUrl}" target="_blank" rel="noopener"
+                           style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px 24px; background: linear-gradient(135deg, #00a4e4 0%, #0070c9 100%); color: white; text-decoration: none; border-radius: 12px; font-weight: 600; transition: transform 0.2s;"
+                           onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                            <span style="font-size: 1.5em;">✈️</span>
+                            <span>Book Flight on Skyscanner</span>
+                            <span style="opacity: 0.7;">→</span>
+                        </a>
+                        <a href="${bookingUrl}" target="_blank" rel="noopener"
+                           style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px 24px; background: linear-gradient(135deg, #003580 0%, #00224f 100%); color: white; text-decoration: none; border-radius: 12px; font-weight: 600; transition: transform 0.2s;"
+                           onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                            <span style="font-size: 1.5em;">🏨</span>
+                            <span>Book Hotel on Booking.com</span>
+                            <span style="opacity: 0.7;">→</span>
+                        </a>
+                    </div>
+
+                    <p style="color: var(--text-secondary); margin-top: 20px; font-size: 0.85em;">
+                        💡 Tip: Open both tabs and complete your bookings for the bundle experience!
                     </p>
                 </div>
             `;
 
-            openModal('🎫 Your Trip', html);
-            document.getElementById('modalConfirm').textContent = 'Close';
-            document.getElementById('modalConfirm').onclick = closeModal;
+            openModal('🎫 Book Your Trip', html);
+            document.getElementById('modalConfirm').textContent = 'Open Both →';
+            document.getElementById('modalConfirm').onclick = () => {
+                window.open(skyscannerUrl, '_blank');
+                setTimeout(() => window.open(bookingUrl, '_blank'), 500);
+                closeModal();
+                showToast('✈️🏨 Opening booking pages...');
+            };
         }
 
         // ========== SORT BUNDLES ==========
@@ -1409,6 +1467,7 @@ def index():
     return render_template_string(
         HTML_TEMPLATE,
         bundles=bundles_data.get("bundles") if bundles_data else None,
+        bundles_data=bundles_data,
         trip_type=bundles_data.get("trip_type", "return") if bundles_data else "return",
         route_display=bundles_data.get("route_display", "") if bundles_data else "",
         cities=CITIES,
